@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
+from dateutil import parser, tz
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -87,11 +89,28 @@ class LocalvoltsCostsFlexUpSensor(LocalvoltsSensor):
 
     @property
     def extra_state_attributes(self):
-        """Extend base attributes with demandInterval if available."""
+        """Extend base attributes with demandInterval and forecasts if available."""
         attributes = super().extra_state_attributes
         demand_interval = self.coordinator.data.get("demandInterval")
         if demand_interval is not None:
             attributes["demandInterval"] = demand_interval
+        forecast = []
+        if self.coordinator.forecast_data:
+            for fcast in self.coordinator.forecast_data:
+                try:
+                    interval_end_dt = parser.isoparse(fcast["intervalEnd"])
+                    duration = int(fcast.get("intervalDuration", 5))
+                    interval_start_dt = interval_end_dt - datetime.timedelta(minutes=duration)
+                    forecast.append({
+                        "start_time": interval_start_dt.isoformat(),
+                        "end_time": interval_end_dt.isoformat(),
+                        "price": round(fcast.get(COSTS_FLEX_UP, 0) / MONETARY_CONVERSION_FACTOR, 3),
+                    })
+                except Exception as e:
+                    _LOGGER.error("Exception inside forecast extra attributes: %s", ste(e))
+                    continue
+            attributes["forecast"] = forecast
+            attributes["forecastcount"] = len(forecast)
         return attributes
 
 
@@ -105,6 +124,29 @@ class LocalvoltsEarningsFlexUpSensor(LocalvoltsSensor):
         super().__init__(coordinator, EARNINGS_FLEX_UP)
         self._attr_name = EARNINGS_FLEX_UP
         self._attr_unique_id = f"{coordinator.nmi_id}_{EARNINGS_FLEX_UP}"
+
+    @property
+    def extra_state_attributes(self):
+        """Extend base attributes with forecasts if available."""
+        attributes = super().extra_state_attributes
+        forecast = []
+        if self.coordinator.forecast_data:
+            for fcast in self.coordinator.forecast_data:
+                try:
+                    interval_end_dt = parser.isoparse(fcast["intervalEnd"])
+                    duration = int(fcast.get("intervalDuration", 5))
+                    interval_start_dt = interval_end_dt - datetime.timedelta(minutes=duration)
+                    forecast.append({
+                        "start_time": interval_start_dt.isoformat(),
+                        "end_time": interval_end_dt.isoformat(),
+                        "price": round(fcast.get(EARNINGS_FLEX_UP, 0) / MONETARY_CONVERSION_FACTOR, 3),
+                    })
+                except Exception as e:
+                    _LOGGER.error("Exception inside forecast extra attributes: %s", ste(e))
+                    continue
+            attributes["forecast"] = forecast
+            attributes["forecastcount"] = len(forecast)
+        return attributes
 
 
 class LocalvoltsDataLagSensor(CoordinatorEntity, SensorEntity):
